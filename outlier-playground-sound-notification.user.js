@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.2
-// @description  Toca um som quando a geração de resposta termina e adiciona "Continue" na caixa de texto
+// @version      4.3
+// @description  Toca um som quando a geração de resposta termina, adiciona "Continue" na caixa de texto e clica em "Not now" quando detectado
 // @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=outlier.ai
@@ -27,7 +27,7 @@
     const audio = new Audio(SOUND_URL);
     let lastState = null;
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.2...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.3...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -62,6 +62,29 @@
             console.log("✍️ Texto 'Continue' adicionado na caixa de texto");
         } else {
             console.warn("⚠️ Caixa de texto não encontrada");
+        }
+    }
+
+    /**
+     * Clica no botão "Not now" quando detectado
+     */
+    function clickNotNowButton() {
+        // Procura pelo botão "Not now" usando o seletor fornecido
+        const notNowButton = document.querySelector('button[data-accent-color="gray"].rt-Button:has-text("Not now"), button[data-accent-color="gray"].rt-Button');
+        
+        if (notNowButton && notNowButton.textContent.includes('Not now')) {
+            notNowButton.click();
+            console.log("🖱️ Botão 'Not now' clicado automaticamente");
+        } else {
+            // Tenta uma segunda abordagem se o primeiro seletor não funcionar
+            const buttons = document.querySelectorAll('button[data-accent-color="gray"].rt-Button');
+            for (const button of buttons) {
+                if (button.textContent.includes('Not now')) {
+                    button.click();
+                    console.log("🖱️ Botão 'Not now' clicado automaticamente (método alternativo)");
+                    break;
+                }
+            }
         }
     }
 
@@ -102,7 +125,17 @@
         if (currentState !== lastState) {
             console.log(`Mudança de estado detectada: de '${lastState}' para '${currentState}'`);
 
-            // A CONDIÇÃO CHAVE:
+            // CONDIÇÃO PARA CLICAR EM "NOT NOW":
+            // Se o estado anterior era 'none' e o novo estado é 'send-disabled'
+            if (lastState === 'none' && currentState === 'send-disabled') {
+                console.log("🔍 Detectada transição para send-disabled, procurando botão 'Not now'...");
+                // Adiciona um pequeno delay para garantir que o botão esteja renderizado
+                setTimeout(() => {
+                    clickNotNowButton();
+                }, 100);
+            }
+
+            // CONDIÇÃO ORIGINAL:
             // Se o estado anterior era 'stop' e o novo estado é qualquer tipo de 'send',
             // significa que a geração da resposta acabou de terminar.
             if (lastState === 'stop' && currentState.startsWith('send')) {
@@ -132,6 +165,7 @@
 
         console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
         console.log("ℹ️ O som tocará e 'Continue' será adicionado quando a resposta do modelo terminar de ser gerada.");
+        console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando detectado.");
     }, 1500); // Aumentei um pouco o tempo para garantir que a página esteja pronta.
 
     // --- FUNÇÕES DE DEBUG (Opcional) ---
@@ -140,12 +174,15 @@
         const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
         const stopButton = document.querySelector('button:has(svg[data-icon="stop"])');
         const textArea = document.querySelector('textarea.ChatInput_textarea__QUOCH');
+        const notNowButton = document.querySelector('button[data-accent-color="gray"].rt-Button');
         console.log("Botão de Enviar (Send) encontrado:", sendButton);
         if (sendButton) console.log("HTML do Botão de Enviar:", sendButton.outerHTML);
         console.log("Botão de Parar (Stop) encontrado:", stopButton);
         if (stopButton) console.log("HTML do Botão de Parar:", stopButton.outerHTML);
         console.log("Caixa de texto encontrada:", textArea);
         if (textArea) console.log("HTML da Caixa de texto:", textArea.outerHTML);
+        console.log("Botão 'Not now' encontrado:", notNowButton);
+        if (notNowButton) console.log("HTML do Botão 'Not now':", notNowButton.outerHTML);
         console.log("Estado atual (getButtonType):", getButtonType());
         console.log("Último estado registrado (lastState):", lastState);
         console.log("=== FIM DO DEBUG ===");
