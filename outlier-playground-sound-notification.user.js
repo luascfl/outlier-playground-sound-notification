@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.1
-// @description  Toca um som quando a geração de resposta termina (o botão 'Stop' é substituído pelo 'Send').
-// @author       luascfl (revisado por Gemini)
+// @version      4.2
+// @description  Toca um som quando a geração de resposta termina e adiciona "Continue" na caixa de texto
+// @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=outlier.ai
 // @license      MIT
@@ -21,12 +21,13 @@
     // --- CONFIGURAÇÃO ---
     const SOUND_URL = "https://od.lk/s/MjJfMzM5NTM3ODNf/331673__nicola_ariutti__brass_bell_01_take10.wav";
     const POLLING_INTERVAL_MS = 200; // Intervalo de verificação em milissegundos. 200ms é um bom equilíbrio.
+    const AUTO_CONTINUE_TEXT = "Continue"; // Texto a ser adicionado automaticamente
 
     // --- INICIALIZAÇÃO ---
     const audio = new Audio(SOUND_URL);
     let lastState = null;
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.1...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.2...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -35,6 +36,33 @@
     function playSound() {
         console.log("🔔 Tocando som de notificação...");
         audio.play().catch(e => console.error("Erro ao tocar o som. O navegador pode ter bloqueado a reprodução automática. Interaja com a página (clique em algo) e tente novamente.", e));
+    }
+
+    /**
+     * Adiciona texto "Continue" na caixa de texto do prompt
+     */
+    function addContinueText() {
+        // Procura pela textarea usando a classe específica
+        const textArea = document.querySelector('textarea.ChatInput_textarea__QUOCH');
+        
+        if (textArea) {
+            // Define o valor da textarea
+            textArea.value = AUTO_CONTINUE_TEXT;
+            
+            // Dispara eventos para garantir que o React/framework detecte a mudança
+            const inputEvent = new Event('input', { bubbles: true });
+            const changeEvent = new Event('change', { bubbles: true });
+            
+            textArea.dispatchEvent(inputEvent);
+            textArea.dispatchEvent(changeEvent);
+            
+            // Foca na textarea
+            textArea.focus();
+            
+            console.log("✍️ Texto 'Continue' adicionado na caixa de texto");
+        } else {
+            console.warn("⚠️ Caixa de texto não encontrada");
+        }
     }
 
     /**
@@ -80,6 +108,11 @@
             if (lastState === 'stop' && currentState.startsWith('send')) {
                 console.log("✅ Resposta completa!");
                 playSound();
+                
+                // Adiciona um pequeno delay para garantir que a interface esteja pronta
+                setTimeout(() => {
+                    addContinueText();
+                }, 100);
             }
 
             // Atualiza o último estado conhecido.
@@ -98,7 +131,7 @@
         setInterval(monitorStateChange, POLLING_INTERVAL_MS);
 
         console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
-        console.log("ℹ️ O som tocará quando a resposta do modelo terminar de ser gerada.");
+        console.log("ℹ️ O som tocará e 'Continue' será adicionado quando a resposta do modelo terminar de ser gerada.");
     }, 1500); // Aumentei um pouco o tempo para garantir que a página esteja pronta.
 
     // --- FUNÇÕES DE DEBUG (Opcional) ---
@@ -106,10 +139,13 @@
         console.log("=== INFORMAÇÕES DE DEBUG ===");
         const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
         const stopButton = document.querySelector('button:has(svg[data-icon="stop"])');
+        const textArea = document.querySelector('textarea.ChatInput_textarea__QUOCH');
         console.log("Botão de Enviar (Send) encontrado:", sendButton);
         if (sendButton) console.log("HTML do Botão de Enviar:", sendButton.outerHTML);
         console.log("Botão de Parar (Stop) encontrado:", stopButton);
         if (stopButton) console.log("HTML do Botão de Parar:", stopButton.outerHTML);
+        console.log("Caixa de texto encontrada:", textArea);
+        if (textArea) console.log("HTML da Caixa de texto:", textArea.outerHTML);
         console.log("Estado atual (getButtonType):", getButtonType());
         console.log("Último estado registrado (lastState):", lastState);
         console.log("=== FIM DO DEBUG ===");
