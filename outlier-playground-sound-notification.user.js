@@ -2,11 +2,15 @@
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
 // @version      4.0
-// @description  Toca um som quando a resposta do modelo termina de carregar
+// @description  Toca um som quando a geração de resposta termina (o botão 'Stop' é substituído pelo 'Send').
 // @author       luascfl
 // @match        https://app.outlier.ai/playground*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=outlier.ai
 // @license      MIT
+// @homepageURL  https://github.com/luascfl/outlier-playground-sound-notification
+// @supportURL   https://github.com/luascfl/outlier-playground-sound-notification/issues
+// @updateURL    https://raw.githubusercontent.com/luascfl/outlier-playground-sound-notification/main/outlier-playground-sound-notification.user.js
+// @downloadURL  https://raw.githubusercontent.com/luascfl/outlier-playground-sound-notification/main/outlier-playground-sound-notification.user.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
