@@ -319,13 +319,6 @@
         
         console.log("Estado atual (getButtonType):", getButtonType());
         console.log("Último estado registrado (lastState):", lastState);
-        console.log("=== FIM
-Claude Opus 4
-Continue
-
-
-JAVASCRIPT
-
         console.log("=== FIM DO DEBUG ===");
     }
 
