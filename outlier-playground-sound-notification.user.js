@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      2.2
-// @description  Toca um som quando a geração de resposta termina (o botão 'Stop' é substituído pelo 'Send').
+// @version      2.3
+// @description  Toca um som quando a animação de carregamento do botão 'Send' termina.
 // @author       luascfl
 // @match        https://app.outlier.ai/playground*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=outlier.ai
@@ -18,85 +18,64 @@
 (function() {
     'use strict';
 
+    // --- CONFIGURAÇÃO ---
+
     // URL do som a ser tocado
     const SOUND_URL = "https://od.lk/s/MjJfMzM5NTM3ODNf/331673__nicola_ariutti__brass_bell_01_take10.wav";
 
-    // --- LÓGICA DO SCRIPT ---
+    // NOME DA CLASSE DE CARREGAMENTO - **ESTA É A PARTE MAIS IMPORTANTE**
+    // Procure no inspetor de elementos qual classe CSS é adicionada ao botão
+    // ou ao SVG *apenas* durante o carregamento. Exemplos comuns são 'animate-spin',
+    // 'animate-pulse', 'loading', 'is-loading'.
+    const LOADING_CLASS_NAME = 'animate-spin';
+
+    // --- FIM DA CONFIGURAÇÃO ---
+
 
     const audio = new Audio(SOUND_URL);
-
     function playSound() {
-        audio.play().catch(e => console.log("Não foi possível tocar o som:", e));
+        audio.play().catch(e => console.error("Erro ao tocar o som:", e));
     }
 
     /**
-     * Verifica se um nó é o botão "Stop".
-     * @param {Node} node - O elemento a ser verificado.
-     * @returns {boolean}
+     * Observa um botão específico para mudanças em sua lista de classes.
+     * @param {Element} button - O elemento do botão a ser observado.
      */
-    function isStopButton(node) {
-        return node.nodeType === 1 && node.querySelector('svg[data-icon="stop"]') !== null;
-    }
+    function observeButtonForLoadingState(button) {
+        // Guarda o estado inicial
+        let wasLoading = button.classList.contains(LOADING_CLASS_NAME);
+        console.log(`Observando o botão. Estado inicial de carregamento ('${LOADING_CLASS_NAME}'):`, wasLoading);
 
-    /**
-     * Verifica se um nó é o botão "Send" (avião de papel).
-     * @param {Node} node - O elemento a ser verificado.
-     * @returns {boolean}
-     */
-    function isSendButton(node) {
-        return node.nodeType === 1 && node.querySelector('svg[data-icon="paper-plane-top"]') !== null;
-    }
+        const observer = new MutationObserver(() => {
+            const isCurrentlyLoading = button.classList.contains(LOADING_CLASS_NAME);
 
-    /**
-     * A função principal do observador.
-     * Ele é acionado sempre que um elemento é adicionado ou removido do contêiner do botão.
-     */
-    const observerCallback = (mutationsList, observer) => {
-        for (const mutation of mutationsList) {
-            let stopButtonRemoved = false;
-            let sendButtonAdded = false;
-
-            // Verifica se o botão "Stop" foi removido
-            mutation.removedNodes.forEach(node => {
-                if (isStopButton(node)) {
-                    stopButtonRemoved = true;
-                }
-            });
-
-            // Verifica se o botão "Send" foi adicionado
-            mutation.addedNodes.forEach(node => {
-                if (isSendButton(node)) {
-                    sendButtonAdded = true;
-                }
-            });
-
-            // Se ambas as condições ocorrerem na mesma mutação, é a transição que queremos!
-            if (stopButtonRemoved && sendButtonAdded) {
-                console.log("Transição de 'Stop' para 'Send' detectada. Tocando som.");
+            // A condição para tocar o som:
+            // O botão ESTAVA carregando, mas AGORA NÃO ESTÁ mais.
+            if (wasLoading && !isCurrentlyLoading) {
+                console.log("Animação de carregamento finalizada. Tocando som.");
                 playSound();
-                // Interrompe o loop, pois o evento já foi encontrado.
-                return;
             }
-        }
-    };
+
+            // Atualiza o estado para a próxima verificação
+            wasLoading = isCurrentlyLoading;
+        });
+
+        // Inicia a observação, focando apenas no atributo 'class' para máxima eficiência
+        observer.observe(button, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+    }
 
     /**
-     * Aguarda o contêiner do botão aparecer e, em seguida, o observa.
+     * Aguarda o botão de envio aparecer na página e inicia o observador.
      */
     function waitAndObserve() {
-        // Encontra qualquer um dos botões para localizar o contêiner pai
-        const anyButton = document.querySelector('button svg[data-icon="stop"], button svg[data-icon="paper-plane-top"]');
+        const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
 
-        if (anyButton) {
-            const buttonContainer = anyButton.closest('button').parentElement;
-            if (buttonContainer) {
-                console.log("Contêiner do botão encontrado. Iniciando observador de troca.");
-                const observer = new MutationObserver(observerCallback);
-                // Observa a adição e remoção de elementos filhos diretos
-                observer.observe(buttonContainer, { childList: true });
-            }
+        if (sendButton) {
+            observeButtonForLoadingState(sendButton);
         } else {
-            // Se ainda não encontrou, tenta novamente em breve
             setTimeout(waitAndObserve, 500);
         }
     }
