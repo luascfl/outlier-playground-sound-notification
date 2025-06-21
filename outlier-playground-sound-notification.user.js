@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.5
+// @version      4.6
 // @description  Toca um som quando a geração de resposta termina, adiciona "Continue" na caixa de texto e clica em "Not now" quando detectado
 // @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
@@ -27,7 +27,7 @@
     const audio = new Audio(SOUND_URL);
     let lastState = null;
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.5...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.6...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -39,58 +39,137 @@
     }
 
     /**
-     * Adiciona texto "Continue" na caixa de texto do prompt de forma mais robusta
+     * Adiciona texto "Continue" na caixa de texto do prompt simulando interação real do usuário
      */
     function addContinueText() {
-        // Procura pela textarea usando a classe específica
         const textArea = document.querySelector('textarea.ChatInput_textarea__QUOCH');
         
         if (textArea) {
-            // Método 1: Simula digitação real
+            // Limpa e foca
             textArea.focus();
-            textArea.value = '';
+            textArea.select();
+            document.execCommand('delete');
             
-            // Simula a digitação caractere por caractere
-            const text = AUTO_CONTINUE_TEXT;
-            let index = 0;
+            // Método 1: Usa execCommand para inserir texto (funciona em muitos casos onde outros métodos falham)
+            document.execCommand('insertText', false, AUTO_CONTINUE_TEXT);
             
-            const typeChar = () => {
-                if (index < text.length) {
-                    textArea.value += text[index];
-                    
-                    // Dispara eventos para cada caractere
-                    const inputEvent = new InputEvent('input', {
-                        bubbles: true,
-                        cancelable: true,
-                        inputType: 'insertText',
-                        data: text[index]
-                    });
-                    textArea.dispatchEvent(inputEvent);
-                    
-                    index++;
-                    setTimeout(typeChar, 50); // 50ms entre cada caractere
-                } else {
-                    // Após digitar tudo, dispara evento de change
-                    const changeEvent = new Event('change', { bubbles: true });
-                    textArea.dispatchEvent(changeEvent);
-                    
-                    console.log("✍️ Texto 'Continue' adicionado na caixa de texto");
-                    
-                    // Mantém o foco e tenta preservar o valor
+            // Método 2: Simula eventos de teclado para cada caractere
+            setTimeout(() => {
+                if (textArea.value !== AUTO_CONTINUE_TEXT) {
+                    textArea.value = '';
                     textArea.focus();
                     
-                    // Método 2: Reforça o valor após um delay
-                    setTimeout(() => {
-                        if (textArea.value !== AUTO_CONTINUE_TEXT) {
-                            textArea.value = AUTO_CONTINUE_TEXT;
-                            textArea.dispatchEvent(new Event('input', { bubbles: true }));
-                            textArea.dispatchEvent(new Event('change', { bubbles: true }));
-                        }
-                    }, 200);
+                    // Simula pressionamento de tecla para cada caractere
+                    for (let i = 0; i < AUTO_CONTINUE_TEXT.length; i++) {
+                        const char = AUTO_CONTINUE_TEXT[i];
+                        
+                        // KeyDown
+                        const keydownEvent = new KeyboardEvent('keydown', {
+                            key: char,
+                            code: 'Key' + char.toUpperCase(),
+                            keyCode: char.charCodeAt(0),
+                            which: char.charCodeAt(0),
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        textArea.dispatchEvent(keydownEvent);
+                        
+                        // KeyPress (deprecated mas alguns sites ainda usam)
+                        const keypressEvent = new KeyboardEvent('keypress', {
+                            key: char,
+                            code: 'Key' + char.toUpperCase(),
+                            keyCode: char.charCodeAt(0),
+                            which: char.charCodeAt(0),
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        textArea.dispatchEvent(keypressEvent);
+                        
+                        // Adiciona o caractere
+                        textArea.value += char;
+                        
+                        // Input event
+                        const inputEvent = new InputEvent('input', {
+                            data: char,
+                            inputType: 'insertText',
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        textArea.dispatchEvent(inputEvent);
+                        
+                        // KeyUp
+                        const keyupEvent = new KeyboardEvent('keyup', {
+                            key: char,
+                            code: 'Key' + char.toUpperCase(),
+                            keyCode: char.charCodeAt(0),
+                            which: char.charCodeAt(0),
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        textArea.dispatchEvent(keyupEvent);
+                    }
+                    
+                    // Dispara evento de change final
+                    textArea.dispatchEvent(new Event('change', { bubbles: true }));
                 }
-            };
+            }, 100);
             
-            typeChar();
+            // Método 3: Tenta forçar uma atualização do React se os métodos anteriores falharem
+            setTimeout(() => {
+                if (textArea.value === AUTO_CONTINUE_TEXT) {
+                    console.log("✍️ Texto 'Continue' adicionado com sucesso!");
+                    
+                    // Simula um espaço e backspace para forçar reconhecimento
+                    const spaceDown = new KeyboardEvent('keydown', {
+                        key: ' ',
+                        code: 'Space',
+                        keyCode: 32,
+                        which: 32,
+                        bubbles: true
+                    });
+                    const spaceUp = new KeyboardEvent('keyup', {
+                        key: ' ',
+                        code: 'Space',
+                        keyCode: 32,
+                        which: 32,
+                        bubbles: true
+                    });
+                    const backspaceDown = new KeyboardEvent('keydown', {
+                        key: 'Backspace',
+                        code: 'Backspace',
+                        keyCode: 8,
+                        which: 8,
+                        bubbles: true
+                    });
+                    const backspaceUp = new KeyboardEvent('keyup', {
+                        key: 'Backspace',
+                        code: 'Backspace',
+                        keyCode: 8,
+                        which: 8,
+                        bubbles: true
+                    });
+                    
+                    // Adiciona e remove um espaço
+                    textArea.dispatchEvent(spaceDown);
+                    textArea.value += ' ';
+                    textArea.dispatchEvent(new InputEvent('input', {
+                        data: ' ',
+                        inputType: 'insertText',
+                        bubbles: true
+                    }));
+                    textArea.dispatchEvent(spaceUp);
+                    
+                    setTimeout(() => {
+                        textArea.dispatchEvent(backspaceDown);
+                        textArea.value = textArea.value.slice(0, -1);
+                        textArea.dispatchEvent(new InputEvent('input', {
+                            inputType: 'deleteContentBackward',
+                            bubbles: true
+                        }));
+                        textArea.dispatchEvent(backspaceUp);
+                    }, 50);
+                }
+            }, 500);
             
         } else {
             console.warn("⚠️ Caixa de texto não encontrada");
@@ -210,7 +289,10 @@
         const textArea = document.querySelector('textarea.ChatInput_textarea__QUOCH');
         const notNowButton = document.querySelector('button[data-accent-color="gray"].rt-Button');
         console.log("Botão de Enviar (Send) encontrado:", sendButton);
-        if (sendButton) console.log("HTML do Botão de Enviar:", sendButton.outerHTML);
+        if (sendButton) {
+            console.log("HTML do Botão de Enviar:", sendButton.outerHTML);
+            console.log("Botão Send está desabilitado?", sendButton.disabled);
+        }
         console.log("Botão de Parar (Stop) encontrado:", stopButton);
         if (stopButton) console.log("HTML do Botão de Parar:", stopButton.outerHTML);
         console.log("Caixa de texto encontrada:", textArea);
