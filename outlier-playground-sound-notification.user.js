@@ -393,3 +393,10 @@
             return false;
         }
     };
+
+    // Adiciona o comando de debug à janela para que possa ser chamado pelo console.
+    window.debugOutlierScript = debugElements;
+    console.log("💡 Dica: Digite 'debugOutlierScript()' no console para verificar o estado dos elementos.");
+    console.log("💡 Dica: Digite 'testClickable(selector)' no console para testar se um elemento é clicável.");
+
+})();
