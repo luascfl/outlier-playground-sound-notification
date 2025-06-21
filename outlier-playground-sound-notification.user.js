@@ -1,16 +1,12 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      2.3
-// @description  Toca um som quando a animação de carregamento do botão 'Send' termina.
+// @version      3.0
+// @description  Toca um som quando a resposta do modelo termina de carregar
 // @author       luascfl
 // @match        https://app.outlier.ai/playground*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=outlier.ai
 // @license      MIT
-// @homepageURL  https://github.com/luascfl/outlier-playground-sound-notification
-// @supportURL   https://github.com/luascfl/outlier-playground-sound-notification/issues
-// @updateURL    https://raw.githubusercontent.com/luascfl/outlier-playground-sound-notification/main/outlier-playground-sound-notification.user.js
-// @downloadURL  https://raw.githubusercontent.com/luascfl/outlier-playground-sound-notification/main/outlier-playground-sound-notification.user.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -18,68 +14,136 @@
 (function() {
     'use strict';
 
-    // --- CONFIGURAÇÃO ---
-
-    // URL do som a ser tocado
+    // URL do som
     const SOUND_URL = "https://od.lk/s/MjJfMzM5NTM3ODNf/331673__nicola_ariutti__brass_bell_01_take10.wav";
-
-    // NOME DA CLASSE DE CARREGAMENTO - **ESTA É A PARTE MAIS IMPORTANTE**
-    // Procure no inspetor de elementos qual classe CSS é adicionada ao botão
-    // ou ao SVG *apenas* durante o carregamento. Exemplos comuns são 'animate-spin',
-    // 'animate-pulse', 'loading', 'is-loading'.
-    const LOADING_CLASS_NAME = 'animate-spin';
-
-    // --- FIM DA CONFIGURAÇÃO ---
-
-
+    
     const audio = new Audio(SOUND_URL);
+    let isWaitingForResponse = false;
+    let lastMessageCount = 0;
+
     function playSound() {
         audio.play().catch(e => console.error("Erro ao tocar o som:", e));
     }
 
-    /**
-     * Observa um botão específico para mudanças em sua lista de classes.
-     * @param {Element} button - O elemento do botão a ser observado.
-     */
-    function observeButtonForLoadingState(button) {
-        // Guarda o estado inicial
-        let wasLoading = button.classList.contains(LOADING_CLASS_NAME);
-        console.log(`Observando o botão. Estado inicial de carregamento ('${LOADING_CLASS_NAME}'):`, wasLoading);
-
-        const observer = new MutationObserver(() => {
-            const isCurrentlyLoading = button.classList.contains(LOADING_CLASS_NAME);
-
-            // A condição para tocar o som:
-            // O botão ESTAVA carregando, mas AGORA NÃO ESTÁ mais.
-            if (wasLoading && !isCurrentlyLoading) {
-                console.log("Animação de carregamento finalizada. Tocando som.");
-                playSound();
-            }
-
-            // Atualiza o estado para a próxima verificação
-            wasLoading = isCurrentlyLoading;
-        });
-
-        // Inicia a observação, focando apenas no atributo 'class' para máxima eficiência
-        observer.observe(button, {
-            attributes: true,
-            attributeFilter: ['class']
-        });
+    // Função para contar mensagens na conversa
+    function countMessages() {
+        // Ajuste este seletor baseado na estrutura real da página
+        return document.querySelectorAll('[class*="message"], [class*="chat-message"], [role="article"]').length;
     }
 
-    /**
-     * Aguarda o botão de envio aparecer na página e inicia o observador.
-     */
-    function waitAndObserve() {
-        const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
+    // Função para verificar se o botão está desabilitado
+    function isButtonDisabled() {
+        const button = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
+        return button && (button.disabled || button.getAttribute('disabled') !== null);
+    }
 
-        if (sendButton) {
-            observeButtonForLoadingState(sendButton);
-        } else {
-            setTimeout(waitAndObserve, 500);
+    // Função principal de monitoramento
+    function monitorChat() {
+        const currentMessageCount = countMessages();
+        const buttonDisabled = isButtonDisabled();
+        
+        // Detecta quando o usuário envia uma mensagem (botão fica desabilitado)
+        if (buttonDisabled && !isWaitingForResponse) {
+            isWaitingForResponse = true;
+            lastMessageCount = currentMessageCount;
+            console.log("Mensagem enviada, aguardando resposta...");
+        }
+        
+        // Detecta quando uma nova mensagem aparece e o botão é reabilitado
+        if (isWaitingForResponse && !buttonDisabled && currentMessageCount > lastMessageCount) {
+            console.log("Nova mensagem recebida! Tocando som...");
+            playSound();
+            isWaitingForResponse = false;
         }
     }
 
-    // Inicia o processo
-    waitAndObserve();
+    // Observador para mudanças no DOM
+    function setupObserver() {
+        const targetNode = document.body;
+        
+        const observer = new MutationObserver(() => {
+            monitorChat();
+        });
+        
+        observer.observe(targetNode, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['disabled', 'class']
+        });
+        
+        console.log("Observador iniciado!");
+    }
+
+    // Método alternativo: observar especificamente o botão
+    function observeButton() {
+        const button = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
+        
+        if (!button) {
+            setTimeout(observeButton, 500);
+            return;
+        }
+        
+        let wasDisabled = button.disabled;
+        
+        const observer = new MutationObserver(() => {
+            const isDisabled = button.disabled;
+            
+            // Se o botão estava desabilitado e agora está habilitado
+            if (wasDisabled && !isDisabled) {
+                console.log("Botão reabilitado - resposta completa!");
+                // Pequeno delay para garantir que a mensagem foi renderizada
+                setTimeout(playSound, 100);
+            }
+            
+            wasDisabled = isDisabled;
+        });
+        
+        observer.observe(button, {
+            attributes: true,
+            attributeFilter: ['disabled']
+        });
+        
+        // Também observa mudanças no conteúdo do chat
+        const chatContainer = document.querySelector('main, [role="main"], .chat-container');
+        if (chatContainer) {
+            const chatObserver = new MutationObserver(() => {
+                monitorChat();
+            });
+            
+            chatObserver.observe(chatContainer, {
+                childList: true,
+                subtree: true
+            });
+        }
+    }
+
+    // Função de debug para ajudar a identificar elementos
+    function debugElements() {
+        console.log("=== DEBUG INFO ===");
+        
+        const button = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
+        console.log("Botão encontrado:", button);
+        console.log("Botão desabilitado:", button?.disabled);
+        console.log("Classes do botão:", button?.className);
+        
+        // Procura por indicadores de carregamento
+        const spinners = document.querySelectorAll('[class*="spin"], [class*="load"], [class*="animate"]');
+        console.log("Elementos com animação encontrados:", spinners.length);
+        spinners.forEach(el => console.log("- ", el.className));
+        
+        console.log("=== FIM DEBUG ===");
+    }
+
+    // Inicia o script
+    setTimeout(() => {
+        debugElements(); // Remove esta linha após identificar os elementos
+        observeButton();
+        setupObserver();
+    }, 1000);
+
+    // Adiciona comando de debug no console
+    window.debugOutlierScript = debugElements;
+    console.log("Script carregado! Use 'debugOutlierScript()' no console para debug.");
+
 })();
