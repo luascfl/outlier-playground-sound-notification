@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.0
+// @version      4.1
 // @description  Toca um som quando a geração de resposta termina (o botão 'Stop' é substituído pelo 'Send').
-// @author       luascfl
+// @author       luascfl (revisado por Gemini)
 // @match        https://app.outlier.ai/playground*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=outlier.ai
 // @license      MIT
@@ -18,185 +18,105 @@
 (function() {
     'use strict';
 
-    // URL do som
+    // --- CONFIGURAÇÃO ---
     const SOUND_URL = "https://od.lk/s/MjJfMzM5NTM3ODNf/331673__nicola_ariutti__brass_bell_01_take10.wav";
-    
-    const audio = new Audio(SOUND_URL);
-    let isLoading = false;
-    let buttonObserver = null;
+    const POLLING_INTERVAL_MS = 200; // Intervalo de verificação em milissegundos. 200ms é um bom equilíbrio.
 
+    // --- INICIALIZAÇÃO ---
+    const audio = new Audio(SOUND_URL);
+    let lastState = null;
+
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.1...");
+
+    /**
+     * Tenta tocar o som de notificação.
+     * Inclui tratamento de erro para casos em que o navegador bloqueia o autoplay.
+     */
     function playSound() {
-        audio.play().catch(e => console.error("Erro ao tocar o som:", e));
+        console.log("🔔 Tocando som de notificação...");
+        audio.play().catch(e => console.error("Erro ao tocar o som. O navegador pode ter bloqueado a reprodução automática. Interaja com a página (clique em algo) e tente novamente.", e));
     }
 
-    // Função para verificar o tipo de botão atual
+    /**
+     * Verifica qual tipo de botão está visível na interface.
+     * @returns {'stop' | 'send-enabled' | 'send-disabled' | 'none'} O estado atual do botão.
+     */
     function getButtonType() {
-        // Procura pelo botão de enviar (paper-plane)
-        const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
         // Procura pelo botão de parar (stop)
         const stopButton = document.querySelector('button:has(svg[data-icon="stop"])');
-        
         if (stopButton) {
             return 'stop';
-        } else if (sendButton) {
+        }
+
+        // Procura pelo botão de enviar (paper-plane)
+        const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
+        if (sendButton) {
+            // Verifica se o botão de enviar está desabilitado
             return sendButton.disabled ? 'send-disabled' : 'send-enabled';
         }
+
         return 'none';
     }
 
-    // Função principal de monitoramento
-    function checkButtonState() {
+    /**
+     * Função principal que monitora a mudança de estado e decide quando tocar o som.
+     */
+    function monitorStateChange() {
         const currentState = getButtonType();
-        
-        console.log(`Estado do botão: ${currentState}`);
-        
-        // Se mudou para o botão de stop, significa que está carregando
-        if (currentState === 'stop' && !isLoading) {
-            isLoading = true;
-            console.log("🔄 Iniciou o carregamento da resposta...");
-        }
-        
-        // Se estava carregando e agora voltou para o botão de enviar habilitado
-        if (isLoading && currentState === 'send-enabled') {
-            isLoading = false;
-            console.log("✅ Resposta completa! Tocando som...");
-            playSound();
-        }
-    }
 
-    // Observador para mudanças no container dos botões
-    function setupButtonObserver() {
-        // Primeiro, tenta encontrar o container pai dos botões
-        // Pode ser necessário ajustar este seletor baseado na estrutura real
-        const buttonContainer = document.querySelector('form, [class*="input"], [class*="chat-input"], [class*="message-form"]');
-        
-        if (!buttonContainer) {
-            console.log("Container dos botões não encontrado, tentando novamente...");
-            setTimeout(setupButtonObserver, 500);
+        // Se o estado não foi inicializado ainda, apenas define o estado inicial.
+        if (lastState === null) {
+            lastState = currentState;
             return;
         }
-        
-        console.log("🎯 Container dos botões encontrado! Iniciando observação...");
-        
-        // Desconecta observer anterior se existir
-        if (buttonObserver) {
-            buttonObserver.disconnect();
+
+        // Se o estado mudou, processa a lógica.
+        if (currentState !== lastState) {
+            console.log(`Mudança de estado detectada: de '${lastState}' para '${currentState}'`);
+
+            // A CONDIÇÃO CHAVE:
+            // Se o estado anterior era 'stop' e o novo estado é qualquer tipo de 'send',
+            // significa que a geração da resposta acabou de terminar.
+            if (lastState === 'stop' && currentState.startsWith('send')) {
+                console.log("✅ Resposta completa!");
+                playSound();
+            }
+
+            // Atualiza o último estado conhecido.
+            lastState = currentState;
         }
-        
-        // Cria novo observer
-        buttonObserver = new MutationObserver((mutations) => {
-            // Verifica se houve mudanças relevantes
-            let relevantChange = false;
-            
-            mutations.forEach(mutation => {
-                if (mutation.type === 'childList') {
-                    // Verifica se algum botão foi adicionado ou removido
-                    const addedButtons = Array.from(mutation.addedNodes).some(node => 
-                        node.nodeName === 'BUTTON' || (node.querySelector && node.querySelector('button'))
-                    );
-                    const removedButtons = Array.from(mutation.removedNodes).some(node => 
-                        node.nodeName === 'BUTTON' || (node.querySelector && node.querySelector('button'))
-                    );
-                    
-                    if (addedButtons || removedButtons) {
-                        relevantChange = true;
-                    }
-                } else if (mutation.type === 'attributes' && mutation.target.nodeName === 'BUTTON') {
-                    relevantChange = true;
-                }
-            });
-            
-            if (relevantChange) {
-                checkButtonState();
-            }
-        });
-        
-        // Observa mudanças no container
-        buttonObserver.observe(buttonContainer, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['disabled']
-        });
-        
-        // Verifica o estado inicial
-        checkButtonState();
     }
 
-    // Método alternativo mais simples: polling
-    function setupPolling() {
-        let lastState = getButtonType();
-        
-        setInterval(() => {
-            const currentState = getButtonType();
-            
-            if (currentState !== lastState) {
-                console.log(`Estado mudou de '${lastState}' para '${currentState}'`);
-                
-                // Se mudou de qualquer estado para 'stop', começou a carregar
-                if (currentState === 'stop' && lastState !== 'stop') {
-                    isLoading = true;
-                    console.log("🔄 Iniciou o carregamento da resposta...");
-                }
-                
-                // Se mudou de 'stop' para 'send-enabled', terminou de carregar
-                if (lastState === 'stop' && currentState === 'send-enabled') {
-                    isLoading = false;
-                    console.log("✅ Resposta completa! Tocando som...");
-                    playSound();
-                }
-                
-                lastState = currentState;
-            }
-        }, 100); // Verifica a cada 100ms
-    }
+    // Aguarda um momento para garantir que a interface do site foi carregada
+    // antes de iniciar o monitoramento.
+    setTimeout(() => {
+        // Inicializa o estado pela primeira vez.
+        lastState = getButtonType();
+        console.log(`Estado inicial do botão: '${lastState}'`);
 
-    // Função de debug
+        // Inicia o monitoramento contínuo (polling).
+        setInterval(monitorStateChange, POLLING_INTERVAL_MS);
+
+        console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
+        console.log("ℹ️ O som tocará quando a resposta do modelo terminar de ser gerada.");
+    }, 1500); // Aumentei um pouco o tempo para garantir que a página esteja pronta.
+
+    // --- FUNÇÕES DE DEBUG (Opcional) ---
     function debugElements() {
-        console.log("=== DEBUG INFO ===");
-        
+        console.log("=== INFORMAÇÕES DE DEBUG ===");
         const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
         const stopButton = document.querySelector('button:has(svg[data-icon="stop"])');
-        
-        console.log("Botão de enviar encontrado:", sendButton);
-        console.log("Botão de parar encontrado:", stopButton);
-        console.log("Estado atual:", getButtonType());
-        
-        if (sendButton) {
-            console.log("HTML do botão de enviar:", sendButton.outerHTML);
-        }
-        if (stopButton) {
-            console.log("HTML do botão de parar:", stopButton.outerHTML);
-        }
-        
-        console.log("=== FIM DEBUG ===");
+        console.log("Botão de Enviar (Send) encontrado:", sendButton);
+        if (sendButton) console.log("HTML do Botão de Enviar:", sendButton.outerHTML);
+        console.log("Botão de Parar (Stop) encontrado:", stopButton);
+        if (stopButton) console.log("HTML do Botão de Parar:", stopButton.outerHTML);
+        console.log("Estado atual (getButtonType):", getButtonType());
+        console.log("Último estado registrado (lastState):", lastState);
+        console.log("=== FIM DO DEBUG ===");
     }
 
-    // Inicia o script
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.0...");
-    
-    // Aguarda um pouco para a página carregar
-    setTimeout(() => {
-        // Usa ambos os métodos para maior confiabilidade
-        setupButtonObserver();
-        setupPolling(); // Método de fallback
-        
-        console.log("✅ Script iniciado com sucesso!");
-        console.log("ℹ️ O som tocará quando a resposta do modelo terminar de carregar.");
-    }, 1000);
-
-    // Adiciona comandos de debug no console
+    // Adiciona o comando de debug à janela para que possa ser chamado pelo console.
     window.debugOutlierScript = debugElements;
-    window.outlierScriptStatus = () => {
-        console.log({
-            isLoading,
-            currentButtonType: getButtonType(),
-            audioReady: audio.readyState === 4
-        });
-    };
-    
-    console.log("Comandos disponíveis:");
-    console.log("- debugOutlierScript() - Mostra informações de debug");
-    console.log("- outlierScriptStatus() - Mostra status atual do script");
+    console.log("💡 Dica: Digite 'debugOutlierScript()' no console para verificar o estado dos elementos.");
 
 })();
