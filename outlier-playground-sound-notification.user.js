@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.8
+// @version      4.9
 // @description  Toca um som quando a geração de resposta termina, adiciona "Continue" na caixa de texto e clica em "Not now" quando detectado
 // @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
@@ -28,9 +28,9 @@
     // --- INICIALIZAÇÃO ---
     const audio = new Audio(SOUND_URL);
     let lastState = null;
-    let notNowMonitorActive = false; // Flag para evitar múltiplos monitores simultâneos
+    let currentNotNowMonitor = null; // Armazena o ID do intervalo atual do monitor
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.8...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.9...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -207,45 +207,69 @@
     }
 
     /**
+     * Encontra o botão "Not now" no DOM
+     */
+    function findNotNowButton() {
+        // Primeiro tenta encontrar pelo container específico
+        const container = document.querySelector('div.rt-Flex.rt-r-fd-column.rt-r-ai-center');
+        if (container) {
+            const buttons = container.querySelectorAll('button[data-accent-color="gray"].rt-Button');
+            for (const button of buttons) {
+                if (button.textContent && button.textContent.trim() === 'Not now') {
+                    return button;
+                }
+            }
+        }
+        
+        // Se não encontrar, tenta a busca geral
+        const allButtons = document.querySelectorAll('button[data-accent-color="gray"].rt-Button');
+        for (const button of allButtons) {
+            if (button.textContent && button.textContent.trim() === 'Not now') {
+                return button;
+            }
+        }
+        
+        return null;
+    }
+
+    /**
      * Monitora e clica no botão "Not now" quando ele estiver disponível
      */
     function monitorAndClickNotNow() {
-        if (notNowMonitorActive) {
-            console.log("⚠️ Monitor do botão 'Not now' já está ativo, ignorando nova chamada");
-            return;
+        // Cancela o monitor anterior se existir
+        if (currentNotNowMonitor) {
+            clearInterval(currentNotNowMonitor);
+            console.log("🔄 Cancelando monitor anterior do botão 'Not now'");
         }
         
-        notNowMonitorActive = true;
-        console.log("🔍 Iniciando monitoramento do botão 'Not now'...");
+        console.log("🔍 Iniciando novo monitoramento do botão 'Not now'...");
         
         let elapsedTime = 0;
+        let buttonFoundOnce = false;
         
-        const checkInterval = setInterval(() => {
-            // Procura por todos os botões com as classes especificadas
-            const buttons = document.querySelectorAll('button[data-accent-color="gray"].rt-Button');
-            
-            let notNowButton = null;
-            
-            // Verifica cada botão para encontrar o que contém "Not now"
-            for (const button of buttons) {
-                if (button.textContent && button.textContent.trim() === 'Not now') {
-                    notNowButton = button;
-                    break;
-                }
-            }
+        currentNotNowMonitor = setInterval(() => {
+            const notNowButton = findNotNowButton();
             
             if (notNowButton) {
-                console.log(`⏳ Botão 'Not now' encontrado. Verificando se está clicável... (${elapsedTime/1000}s)`);
+                if (!buttonFoundOnce) {
+                    buttonFoundOnce = true;
+                    console.log("👀 Botão 'Not now' detectado no DOM");
+                }
                 
                 if (isElementClickable(notNowButton)) {
                     console.log("✅ Botão 'Not now' está clicável!");
                     notNowButton.click();
                     console.log("🖱️ Botão 'Not now' clicado automaticamente");
-                    clearInterval(checkInterval);
-                    notNowMonitorActive = false;
+                    clearInterval(currentNotNowMonitor);
+                    currentNotNowMonitor = null;
                 } else {
-                    console.log("⌛ Botão 'Not now' ainda não está clicável, aguardando...");
+                    console.log(`⌛ Botão 'Not now' ainda não está clicável, aguardando... (${elapsedTime/1000}s)`);
                 }
+            } else if (buttonFoundOnce) {
+                // Se o botão foi encontrado antes mas agora desapareceu, para o monitor
+                console.log("❌ Botão 'Not now' desapareceu do DOM");
+                clearInterval(currentNotNowMonitor);
+                currentNotNowMonitor = null;
             }
             
             elapsedTime += NOT_NOW_CHECK_INTERVAL_MS;
@@ -253,8 +277,8 @@
             // Timeout após o tempo máximo de espera
             if (elapsedTime >= NOT_NOW_MAX_WAIT_MS) {
                 console.log("⏱️ Tempo limite excedido. Parando monitoramento do botão 'Not now'");
-                clearInterval(checkInterval);
-                notNowMonitorActive = false;
+                clearInterval(currentNotNowMonitor);
+                currentNotNowMonitor = null;
             }
         }, NOT_NOW_CHECK_INTERVAL_MS);
     }
@@ -302,7 +326,7 @@
             if ((lastState === 'none' && currentState === 'send-disabled') || 
                 (lastState === 'send-enabled' && currentState === 'none')) {
                 console.log("🔍 Detectada transição que pode ter 'Not now', iniciando monitoramento...");
-                // Inicia o monitoramento do botão
+                // Inicia o monitoramento do botão (cancela o anterior automaticamente)
                 monitorAndClickNotNow();
             }
 
@@ -336,7 +360,7 @@
 
         console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
         console.log("ℹ️ O som tocará e 'Continue' será adicionado quando a resposta do modelo terminar de ser gerada.");
-        console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando estiver disponível.");
+        console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando estiver disponível (múltiplas vezes).");
     }, 1500);
 
     // --- FUNÇÕES DE DEBUG (Opcional) ---
@@ -345,7 +369,8 @@
         const sendButton = document.querySelector('button:has(svg[data-icon="paper-plane-top"])');
         const stopButton = document.querySelector('button:has(svg[data-icon="stop"])');
         const textArea = document.querySelector('textarea.ChatInput_textarea__QUOCH');
-        const buttons = document.querySelectorAll('button[data-accent-color="gray"].rt-Button');
+        const notNowButton = findNotNowButton();
+        const container = document.querySelector('div.rt-Flex.rt-r-fd-column.rt-r-ai-center');
         
         console.log("Botão de Enviar (Send) encontrado:", sendButton);
         if (sendButton) {
@@ -360,26 +385,35 @@
             console.log("Valor atual da textarea:", textArea.value);
         }
         
-        console.log("Botões cinzas encontrados:", buttons.length);
-        buttons.forEach((button, index) => {
-            console.log(`Botão cinza ${index + 1}:`, button.textContent.trim());
-            console.log("  - HTML:", button.outerHTML);
-            console.log("  - Clicável?", isElementClickable(button));
-            console.log("  - Desabilitado?", button.disabled);
-            console.log("  - Visível?", window.getComputedStyle(button).display !== 'none');
-        });
+        console.log("Botão 'Not now' encontrado:", notNowButton);
+        if (notNowButton) {
+            console.log("HTML do Botão 'Not now':", notNowButton.outerHTML);
+            console.log("Botão 'Not now' clicável?", isElementClickable(notNowButton));
+        }
         
-        // Procura especificamente pelo container dos botões
-        const buttonContainer = document.querySelector('div.rt-Flex.rt-r-fd-column.rt-r-ai-center');
-        if (buttonContainer) {
-            console.log("Container dos botões encontrado:", buttonContainer.outerHTML);
+        console.log("Container dos botões encontrado:", container);
+        if (container) {
+            console.log("HTML do container:", container.outerHTML);
         }
         
         console.log("Estado atual (getButtonType):", getButtonType());
         console.log("Último estado registrado (lastState):", lastState);
-        console.log("Monitor 'Not now' ativo?", notNowMonitorActive);
+        console.log("Monitor 'Not now' ativo?", currentNotNowMonitor !== null);
         console.log("=== FIM DO DEBUG ===");
     }
+
+    // Adiciona função para forçar clique no Not now
+    window.forceNotNowClick = function() {
+        const button = findNotNowButton();
+        if (button) {
+            console.log("Forçando clique no botão 'Not now'");
+            button.click();
+            return true;
+        } else {
+            console.log("Botão 'Not now' não encontrado");
+            return false;
+        }
+    };
 
     // Adiciona função para testar clicabilidade no console
     window.testClickable = function(selector) {
@@ -398,5 +432,6 @@
     window.debugOutlierScript = debugElements;
     console.log("💡 Dica: Digite 'debugOutlierScript()' no console para verificar o estado dos elementos.");
     console.log("💡 Dica: Digite 'testClickable(selector)' no console para testar se um elemento é clicável.");
+    console.log("💡 Dica: Digite 'forceNotNowClick()' no console para forçar o clique no botão 'Not now'.");
 
 })();
