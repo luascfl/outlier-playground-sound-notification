@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.4
+// @version      4.5
 // @description  Toca um som quando a geração de resposta termina, adiciona "Continue" na caixa de texto e clica em "Not now" quando detectado
 // @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
@@ -27,7 +27,7 @@
     const audio = new Audio(SOUND_URL);
     let lastState = null;
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.4...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.5...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -157,10 +157,12 @@
         if (currentState !== lastState) {
             console.log(`Mudança de estado detectada: de '${lastState}' para '${currentState}'`);
 
-            // CONDIÇÃO PARA CLICAR EM "NOT NOW":
-            // Se o estado anterior era 'none' e o novo estado é 'send-disabled'
-            if (lastState === 'none' && currentState === 'send-disabled') {
-                console.log("🔍 Detectada transição para send-disabled, procurando botão 'Not now'...");
+            // CONDIÇÕES PARA CLICAR EM "NOT NOW":
+            // 1. Se o estado anterior era 'none' e o novo estado é 'send-disabled'
+            // 2. Se o estado anterior era 'send-enabled' e o novo estado é 'none'
+            if ((lastState === 'none' && currentState === 'send-disabled') || 
+                (lastState === 'send-enabled' && currentState === 'none')) {
+                console.log("🔍 Detectada transição que pode ter 'Not now', procurando botão...");
                 // Adiciona um pequeno delay para garantir que o botão esteja renderizado
                 setTimeout(() => {
                     clickNotNowButton();
@@ -197,7 +199,7 @@
 
         console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
         console.log("ℹ️ O som tocará e 'Continue' será adicionado quando a resposta do modelo terminar de ser gerada.");
-        console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando detectado.");
+        console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando detectado nas transições específicas.");
     }, 1500);
 
     // --- FUNÇÕES DE DEBUG (Opcional) ---
