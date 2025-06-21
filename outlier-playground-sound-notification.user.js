@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.7
+// @version      4.8
 // @description  Toca um som quando a geração de resposta termina, adiciona "Continue" na caixa de texto e clica em "Not now" quando detectado
 // @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
@@ -22,13 +22,15 @@
     const SOUND_URL = "https://od.lk/s/MjJfMzM5NTM3ODNf/331673__nicola_ariutti__brass_bell_01_take10.wav";
     const POLLING_INTERVAL_MS = 200; // Intervalo de verificação em milissegundos. 200ms é um bom equilíbrio.
     const AUTO_CONTINUE_TEXT = "Continue"; // Texto a ser adicionado automaticamente
-    const NOT_NOW_DELAY_MS = 4000; // Delay de 4 segundos antes de clicar em "Not now"
+    const NOT_NOW_CHECK_INTERVAL_MS = 500; // Intervalo para verificar se o botão está clicável
+    const NOT_NOW_MAX_WAIT_MS = 30000; // Tempo máximo de espera (30 segundos)
 
     // --- INICIALIZAÇÃO ---
     const audio = new Audio(SOUND_URL);
     let lastState = null;
+    let notNowMonitorActive = false; // Flag para evitar múltiplos monitores simultâneos
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.7...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.8...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -178,37 +180,83 @@
     }
 
     /**
-     * Clica no botão "Not now" quando detectado
+     * Verifica se um elemento está visível e interativo
      */
-    function clickNotNowButton() {
-        // Procura por todos os botões com as classes especificadas
-        const buttons = document.querySelectorAll('button[data-accent-color="gray"].rt-Button');
+    function isElementClickable(element) {
+        if (!element) return false;
         
-        let notNowButton = null;
+        // Verifica se o elemento está no DOM
+        if (!document.body.contains(element)) return false;
         
-        // Verifica cada botão para encontrar o que contém "Not now"
-        for (const button of buttons) {
-            if (button.textContent && button.textContent.trim() === 'Not now') {
-                notNowButton = button;
-                break;
-            }
+        // Verifica se o elemento está visível
+        const style = window.getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+        
+        // Verifica se o elemento não está desabilitado
+        if (element.disabled) return false;
+        
+        // Verifica se o elemento tem dimensões
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return false;
+        
+        // Verifica se não há overlay sobre o elemento
+        const elementAtPoint = document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2);
+        if (!elementAtPoint || (!element.contains(elementAtPoint) && !elementAtPoint.contains(element))) return false;
+        
+        return true;
+    }
+
+    /**
+     * Monitora e clica no botão "Not now" quando ele estiver disponível
+     */
+    function monitorAndClickNotNow() {
+        if (notNowMonitorActive) {
+            console.log("⚠️ Monitor do botão 'Not now' já está ativo, ignorando nova chamada");
+            return;
         }
         
-        if (notNowButton) {
-            console.log(`⏳ Aguardando ${NOT_NOW_DELAY_MS/1000} segundos antes de clicar em 'Not now'...`);
+        notNowMonitorActive = true;
+        console.log("🔍 Iniciando monitoramento do botão 'Not now'...");
+        
+        let elapsedTime = 0;
+        
+        const checkInterval = setInterval(() => {
+            // Procura por todos os botões com as classes especificadas
+            const buttons = document.querySelectorAll('button[data-accent-color="gray"].rt-Button');
             
-            setTimeout(() => {
-                // Verifica se o botão ainda existe antes de clicar
-                if (document.body.contains(notNowButton)) {
+            let notNowButton = null;
+            
+            // Verifica cada botão para encontrar o que contém "Not now"
+            for (const button of buttons) {
+                if (button.textContent && button.textContent.trim() === 'Not now') {
+                    notNowButton = button;
+                    break;
+                }
+            }
+            
+            if (notNowButton) {
+                console.log(`⏳ Botão 'Not now' encontrado. Verificando se está clicável... (${elapsedTime/1000}s)`);
+                
+                if (isElementClickable(notNowButton)) {
+                    console.log("✅ Botão 'Not now' está clicável!");
                     notNowButton.click();
                     console.log("🖱️ Botão 'Not now' clicado automaticamente");
+                    clearInterval(checkInterval);
+                    notNowMonitorActive = false;
                 } else {
-                    console.log("⚠️ Botão 'Not now' não está mais disponível");
+                    console.log("⌛ Botão 'Not now' ainda não está clicável, aguardando...");
                 }
-            }, NOT_NOW_DELAY_MS);
-        } else {
-            console.log("ℹ️ Botão 'Not now' não encontrado neste momento");
-        }
+            }
+            
+            elapsedTime += NOT_NOW_CHECK_INTERVAL_MS;
+            
+            // Timeout após o tempo máximo de espera
+            if (elapsedTime >= NOT_NOW_MAX_WAIT_MS) {
+                console.log("⏱️ Tempo limite excedido. Parando monitoramento do botão 'Not now'");
+                clearInterval(checkInterval);
+                notNowMonitorActive = false;
+            }
+        }, NOT_NOW_CHECK_INTERVAL_MS);
     }
 
     /**
@@ -248,14 +296,14 @@
         if (currentState !== lastState) {
             console.log(`Mudança de estado detectada: de '${lastState}' para '${currentState}'`);
 
-            // CONDIÇÕES PARA CLICAR EM "NOT NOW":
+            // CONDIÇÕES PARA MONITORAR "NOT NOW":
             // 1. Se o estado anterior era 'none' e o novo estado é 'send-disabled'
             // 2. Se o estado anterior era 'send-enabled' e o novo estado é 'none'
             if ((lastState === 'none' && currentState === 'send-disabled') || 
                 (lastState === 'send-enabled' && currentState === 'none')) {
-                console.log("🔍 Detectada transição que pode ter 'Not now', procurando botão...");
-                // Chama a função imediatamente, ela cuida do delay internamente
-                clickNotNowButton();
+                console.log("🔍 Detectada transição que pode ter 'Not now', iniciando monitoramento...");
+                // Inicia o monitoramento do botão
+                monitorAndClickNotNow();
             }
 
             // CONDIÇÃO ORIGINAL:
@@ -288,7 +336,7 @@
 
         console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
         console.log("ℹ️ O som tocará e 'Continue' será adicionado quando a resposta do modelo terminar de ser gerada.");
-        console.log("ℹ️ O botão 'Not now' será clicado automaticamente após 4 segundos quando detectado nas transições específicas.");
+        console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando estiver disponível.");
     }, 1500);
 
     // --- FUNÇÕES DE DEBUG (Opcional) ---
@@ -314,16 +362,34 @@
         
         console.log("Botões cinzas encontrados:", buttons.length);
         buttons.forEach((button, index) => {
-            console.log(`Botão cinza ${index + 1}:`, button.textContent.trim(), button.outerHTML);
+            console.log(`Botão cinza ${index + 1}:`, button.textContent.trim());
+            console.log("  - HTML:", button.outerHTML);
+            console.log("  - Clicável?", isElementClickable(button));
+            console.log("  - Desabilitado?", button.disabled);
+            console.log("  - Visível?", window.getComputedStyle(button).display !== 'none');
         });
+        
+        // Procura especificamente pelo container dos botões
+        const buttonContainer = document.querySelector('div.rt-Flex.rt-r-fd-column.rt-r-ai-center');
+        if (buttonContainer) {
+            console.log("Container dos botões encontrado:", buttonContainer.outerHTML);
+        }
         
         console.log("Estado atual (getButtonType):", getButtonType());
         console.log("Último estado registrado (lastState):", lastState);
+        console.log("Monitor 'Not now' ativo?", notNowMonitorActive);
         console.log("=== FIM DO DEBUG ===");
     }
 
-    // Adiciona o comando de debug à janela para que possa ser chamado pelo console.
-    window.debugOutlierScript = debugElements;
-    console.log("💡 Dica: Digite 'debugOutlierScript()' no console para verificar o estado dos elementos.");
-
-})();
+    // Adiciona função para testar clicabilidade no console
+    window.testClickable = function(selector) {
+        const element = document.querySelector(selector);
+        if (element) {
+            console.log("Elemento encontrado:", element);
+            console.log("É clicável?", isElementClickable(element));
+            return isElementClickable(element);
+        } else {
+            console.log("Elemento não encontrado com o seletor:", selector);
+            return false;
+        }
+    };
