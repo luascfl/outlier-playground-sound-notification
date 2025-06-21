@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.3
+// @version      4.4
 // @description  Toca um som quando a geração de resposta termina, adiciona "Continue" na caixa de texto e clica em "Not now" quando detectado
 // @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
@@ -27,7 +27,7 @@
     const audio = new Audio(SOUND_URL);
     let lastState = null;
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.3...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.4...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -39,27 +39,59 @@
     }
 
     /**
-     * Adiciona texto "Continue" na caixa de texto do prompt
+     * Adiciona texto "Continue" na caixa de texto do prompt de forma mais robusta
      */
     function addContinueText() {
         // Procura pela textarea usando a classe específica
         const textArea = document.querySelector('textarea.ChatInput_textarea__QUOCH');
         
         if (textArea) {
-            // Define o valor da textarea
-            textArea.value = AUTO_CONTINUE_TEXT;
-            
-            // Dispara eventos para garantir que o React/framework detecte a mudança
-            const inputEvent = new Event('input', { bubbles: true });
-            const changeEvent = new Event('change', { bubbles: true });
-            
-            textArea.dispatchEvent(inputEvent);
-            textArea.dispatchEvent(changeEvent);
-            
-            // Foca na textarea
+            // Método 1: Simula digitação real
             textArea.focus();
+            textArea.value = '';
             
-            console.log("✍️ Texto 'Continue' adicionado na caixa de texto");
+            // Simula a digitação caractere por caractere
+            const text = AUTO_CONTINUE_TEXT;
+            let index = 0;
+            
+            const typeChar = () => {
+                if (index < text.length) {
+                    textArea.value += text[index];
+                    
+                    // Dispara eventos para cada caractere
+                    const inputEvent = new InputEvent('input', {
+                        bubbles: true,
+                        cancelable: true,
+                        inputType: 'insertText',
+                        data: text[index]
+                    });
+                    textArea.dispatchEvent(inputEvent);
+                    
+                    index++;
+                    setTimeout(typeChar, 50); // 50ms entre cada caractere
+                } else {
+                    // Após digitar tudo, dispara evento de change
+                    const changeEvent = new Event('change', { bubbles: true });
+                    textArea.dispatchEvent(changeEvent);
+                    
+                    console.log("✍️ Texto 'Continue' adicionado na caixa de texto");
+                    
+                    // Mantém o foco e tenta preservar o valor
+                    textArea.focus();
+                    
+                    // Método 2: Reforça o valor após um delay
+                    setTimeout(() => {
+                        if (textArea.value !== AUTO_CONTINUE_TEXT) {
+                            textArea.value = AUTO_CONTINUE_TEXT;
+                            textArea.dispatchEvent(new Event('input', { bubbles: true }));
+                            textArea.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }, 200);
+                }
+            };
+            
+            typeChar();
+            
         } else {
             console.warn("⚠️ Caixa de texto não encontrada");
         }
@@ -142,10 +174,10 @@
                 console.log("✅ Resposta completa!");
                 playSound();
                 
-                // Adiciona um pequeno delay para garantir que a interface esteja pronta
+                // Adiciona um delay maior para garantir que a interface esteja pronta
                 setTimeout(() => {
                     addContinueText();
-                }, 100);
+                }, 300);
             }
 
             // Atualiza o último estado conhecido.
@@ -166,7 +198,7 @@
         console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
         console.log("ℹ️ O som tocará e 'Continue' será adicionado quando a resposta do modelo terminar de ser gerada.");
         console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando detectado.");
-    }, 1500); // Aumentei um pouco o tempo para garantir que a página esteja pronta.
+    }, 1500);
 
     // --- FUNÇÕES DE DEBUG (Opcional) ---
     function debugElements() {
@@ -180,7 +212,10 @@
         console.log("Botão de Parar (Stop) encontrado:", stopButton);
         if (stopButton) console.log("HTML do Botão de Parar:", stopButton.outerHTML);
         console.log("Caixa de texto encontrada:", textArea);
-        if (textArea) console.log("HTML da Caixa de texto:", textArea.outerHTML);
+        if (textArea) {
+            console.log("HTML da Caixa de texto:", textArea.outerHTML);
+            console.log("Valor atual da textarea:", textArea.value);
+        }
         console.log("Botão 'Not now' encontrado:", notNowButton);
         if (notNowButton) console.log("HTML do Botão 'Not now':", notNowButton.outerHTML);
         console.log("Estado atual (getButtonType):", getButtonType());
