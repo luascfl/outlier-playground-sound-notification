@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Outlier Playground Sound Notification
 // @namespace    http://tampermonkey.net/
-// @version      4.9
+// @version      5.0
 // @description  Toca um som quando a geração de resposta termina, adiciona "Continue" na caixa de texto e clica em "Not now" quando detectado
 // @author       luascfl (revisado por Gemini e Claude)
 // @match        https://app.outlier.ai/playground*
@@ -30,7 +30,7 @@
     let lastState = null;
     let currentNotNowMonitor = null; // Armazena o ID do intervalo atual do monitor
 
-    console.log("🚀 Iniciando Outlier Playground Sound Notification v4.9...");
+    console.log("🚀 Iniciando Outlier Playground Sound Notification v5.0...");
 
     /**
      * Tenta tocar o som de notificação.
@@ -320,15 +320,9 @@
         if (currentState !== lastState) {
             console.log(`Mudança de estado detectada: de '${lastState}' para '${currentState}'`);
 
-            // CONDIÇÕES PARA MONITORAR "NOT NOW":
-            // 1. Se o estado anterior era 'none' e o novo estado é 'send-disabled'
-            // 2. Se o estado anterior era 'send-enabled' e o novo estado é 'none'
-            if ((lastState === 'none' && currentState === 'send-disabled') || 
-                (lastState === 'send-enabled' && currentState === 'none')) {
-                console.log("🔍 Detectada transição que pode ter 'Not now', iniciando monitoramento...");
-                // Inicia o monitoramento do botão (cancela o anterior automaticamente)
-                monitorAndClickNotNow();
-            }
+            // SEMPRE procura o botão "Not now" quando há qualquer mudança de estado
+            console.log("🔍 Mudança de estado detectada, verificando presença do botão 'Not now'...");
+            monitorAndClickNotNow();
 
             // CONDIÇÃO ORIGINAL:
             // Se o estado anterior era 'stop' e o novo estado é qualquer tipo de 'send',
@@ -360,7 +354,7 @@
 
         console.log("✅ Script iniciado com sucesso! Monitorando o botão de resposta.");
         console.log("ℹ️ O som tocará e 'Continue' será adicionado quando a resposta do modelo terminar de ser gerada.");
-        console.log("ℹ️ O botão 'Not now' será clicado automaticamente quando estiver disponível (múltiplas vezes).");
+        console.log("ℹ️ O botão 'Not now' será verificado e clicado automaticamente a cada mudança de estado.");
     }, 1500);
 
     // --- FUNÇÕES DE DEBUG (Opcional) ---
